@@ -33,6 +33,7 @@ from .coordinator import HehkuCoordinator
 from .statistics import HehkuStatisticsImporter
 
 DATA_COORDINATORS = "coordinators"
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 BACKFILL_SCHEMA = vol.Schema(
     {
