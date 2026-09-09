@@ -151,8 +151,21 @@ class HehkuStatisticsImporter:
             if payload.get("resolution") != "hour" or payload.get("fuel") != "elec":
                 raise HehkuApiError("Hehku returned unexpected consumption metadata")
             values = payload["consumption"]
+            response_from = payload.get("from")
+            response_to = payload.get("to")
+            if not isinstance(response_from, str) or not isinstance(response_to, str):
+                raise HehkuApiError("Hehku response is missing consumption boundaries")
             try:
-                starts = interval_starts(start, end, self.timezone, len(values))
+                response_start = datetime.fromisoformat(response_from)
+                response_end = datetime.fromisoformat(response_to)
+            except ValueError as err:
+                raise HehkuApiError("Hehku returned invalid consumption boundaries") from err
+            if response_start.tzinfo is not None or response_end.tzinfo is not None:
+                raise HehkuApiError("Hehku returned unexpected timezone-aware boundaries")
+            if response_start < start or response_end > end or response_end <= response_start:
+                raise HehkuApiError("Hehku returned consumption outside the requested interval")
+            try:
+                starts = interval_starts(response_start, response_end, self.timezone, len(values))
             except IntervalAlignmentError:
                 # A DST date is isolated into its own request. Skip only that day
                 # until Eliq's populated 23/25-hour behavior has been observed.

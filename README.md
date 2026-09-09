@@ -41,11 +41,11 @@ Manual installation is also possible by copying `custom_components/hehku_energy`
 
 Once configured, the integration polls once an hour. Each poll fetches the previous 14 local calendar days plus the current day. Null values remain missing; they are never collapsed or shifted.
 
-Pressing **Fetch recent consumption** triggers that same correction-window poll immediately.
+Pressing **Fetch recent consumption** triggers that same correction-window poll immediately. Home Assistant records the sensor state's `last_changed` when the fetch completes; the actual measurement time is the latest-hour sensor's `interval_start` attribute and the timestamp stored with the external statistic.
 
 ### Custom backfill
 
-A Home Assistant Button entity cannot accept input fields. Custom intervals are therefore implemented as an action instead of a button:
+A Home Assistant Button entity cannot accept input fields. Custom intervals are therefore implemented as an action instead of a button. Open **Settings → Developer tools → Actions**, select **Hehku Energia: Backfill consumption**, and choose the dates, or call the action from YAML:
 
 ```yaml
 action: hehku_energy.backfill

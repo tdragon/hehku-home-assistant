@@ -62,6 +62,8 @@ async def test_import_uses_latest_sum_before_gap() -> None:
             "consumption": [1000] + [None] * 23,
             "resolution": "hour",
             "fuel": "elec",
+            "from": "2026-08-01T00:00:00",
+            "to": "2026-08-02T00:00:00",
         }
     )
     importer = HehkuStatisticsImporter(MagicMock(), client, 42, "Apartment", "Europe/Helsinki")
@@ -90,3 +92,25 @@ async def test_effective_import_span_is_limited() -> None:
         await importer.async_import(date(2022, 1, 1), date(2022, 1, 2))
 
     importer._fetch.assert_not_awaited()
+
+
+async def test_fetch_uses_response_bounds_when_api_clips_requested_range() -> None:
+    """Eliq's echoed bounds, not requested dates, define positional timestamps."""
+    client = MagicMock()
+    client.get_consumption = AsyncMock(
+        return_value={
+            "consumption": [660.0] + [None] * 47,
+            "resolution": "hour",
+            "fuel": "elec",
+            "unit": "energy",
+            "from": "2026-09-08T01:00:00",
+            "to": "2026-09-10T01:00:00",
+        }
+    )
+    importer = HehkuStatisticsImporter(MagicMock(), client, 42, "Apartment", "Europe/Helsinki")
+
+    fetched, missing = await importer._fetch(date(2026, 9, 1), date(2026, 9, 11))
+
+    assert fetched[datetime(2026, 9, 7, 22, tzinfo=UTC)] == 0.66
+    assert len(fetched) == 48
+    assert missing == 47

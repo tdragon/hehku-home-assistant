@@ -36,3 +36,28 @@ def test_autumn_dst_day_has_two_distinct_repeated_hours() -> None:
 def test_ambiguous_api_count_is_rejected_on_dst_day() -> None:
     with pytest.raises(IntervalAlignmentError, match="expected 23"):
         interval_starts(datetime(2026, 3, 29), datetime(2026, 3, 30), "Europe/Helsinki", 24)
+
+
+def test_clipped_autumn_fold_is_resolved_by_value_count() -> None:
+    one_fold = interval_starts(
+        datetime(2026, 10, 25, 3), datetime(2026, 10, 25, 4), "Europe/Helsinki", 1
+    )
+    both_folds = interval_starts(
+        datetime(2026, 10, 25, 3), datetime(2026, 10, 25, 4), "Europe/Helsinki", 2
+    )
+
+    assert one_fold == [datetime(2026, 10, 25, 1, tzinfo=UTC)]
+    assert both_folds == [
+        datetime(2026, 10, 25, 0, tzinfo=UTC),
+        datetime(2026, 10, 25, 1, tzinfo=UTC),
+    ]
+
+
+def test_non_hour_aligned_boundaries_are_rejected() -> None:
+    with pytest.raises(IntervalAlignmentError, match="whole hours"):
+        interval_starts(
+            datetime(2026, 8, 1, 1, 30),
+            datetime(2026, 8, 1, 2, 30),
+            "Europe/Helsinki",
+            1,
+        )

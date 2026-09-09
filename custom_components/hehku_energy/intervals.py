@@ -18,6 +18,17 @@ def local_midnight(value: date, timezone: str) -> datetime:
     return datetime.combine(value, time.min)
 
 
+def _utc_boundary_candidates(value: datetime, zone: ZoneInfo) -> list[datetime]:
+    """Return real UTC instants represented by a naive local boundary."""
+    candidates: list[datetime] = []
+    for fold in (0, 1):
+        candidate = value.replace(tzinfo=zone, fold=fold).astimezone(UTC)
+        round_trip = candidate.astimezone(zone)
+        if round_trip.replace(tzinfo=None) == value and round_trip.fold == fold:
+            candidates.append(candidate)
+    return candidates
+
+
 def interval_starts(
     start: datetime,
     end: datetime,
@@ -27,11 +38,13 @@ def interval_starts(
     """Map a local half-open interval to real UTC hourly starts.
 
     Iterating in UTC naturally skips the nonexistent spring hour and represents both
-    folds of the repeated autumn hour. A count mismatch is rejected rather than
-    guessing how an undocumented API treats DST.
+    folds of the repeated autumn hour. For an ambiguous clipped boundary, the returned
+    value count selects the only possible fold. Other mismatches are rejected.
     """
     if start.tzinfo is not None or end.tzinfo is not None:
         raise IntervalAlignmentError("Eliq request boundaries must be naive local datetimes")
+    if any((value.minute, value.second, value.microsecond) != (0, 0, 0) for value in (start, end)):
+        raise IntervalAlignmentError("Eliq response boundaries must be whole hours")
     if end <= start:
         raise IntervalAlignmentError("End must be after start")
 
@@ -40,20 +53,34 @@ def interval_starts(
     except ZoneInfoNotFoundError as err:
         raise IntervalAlignmentError(f"Unknown timezone: {timezone}") from err
 
-    cursor = start.replace(tzinfo=zone).astimezone(UTC)
-    end_utc = end.replace(tzinfo=zone).astimezone(UTC)
-    starts: list[datetime] = []
-    while cursor < end_utc:
-        starts.append(cursor)
-        cursor += timedelta(hours=1)
+    possible: set[tuple[datetime, ...]] = set()
+    for start_utc in _utc_boundary_candidates(start, zone):
+        for end_utc in _utc_boundary_candidates(end, zone):
+            if end_utc <= start_utc:
+                continue
+            duration = end_utc - start_utc
+            if duration % timedelta(hours=1):
+                continue
+            possible.add(
+                tuple(
+                    start_utc + timedelta(hours=offset)
+                    for offset in range(int(duration / timedelta(hours=1)))
+                )
+            )
 
-    if len(starts) != value_count:
-        raise IntervalAlignmentError(
-            f"Eliq returned {value_count} values; expected {len(starts)} for "
-            f"{start.isoformat()} to {end.isoformat()} in {timezone}. "
-            "The data was not imported because DST alignment is unknown."
-        )
-    return starts
+    matching = [starts for starts in possible if len(starts) == value_count]
+    if len(matching) == 1:
+        return list(matching[0])
+
+    expected = sorted({len(starts) for starts in possible})
+    expected_text = (
+        " or ".join(str(count) for count in expected) if expected else "a valid number of"
+    )
+    raise IntervalAlignmentError(
+        f"Eliq returned {value_count} values; expected {expected_text} for "
+        f"{start.isoformat()} to {end.isoformat()} in {timezone}. "
+        "The data was not imported because DST alignment is unknown."
+    )
 
 
 def expected_interval_count(start_date: date, timezone: str) -> int:
