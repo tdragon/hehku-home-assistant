@@ -1,0 +1,12 @@
+{
+  "domain": "hehku_energy",
+  "name": "Hehku Energia",
+  "codeowners": ["@tdragon"],
+  "config_flow": true,
+  "dependencies": ["recorder"],
+  "documentation": "https://github.com/tdragon/hehku-home-assistant",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/tdragon/hehku-home-assistant/issues",
+  "version": "0.1.0"
+}

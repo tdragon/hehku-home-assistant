@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hehku-home-assistant"
+version = "0.1.0"
+description = "Unofficial Home Assistant integration for Hehku Energia hourly consumption"
+requires-python = ">=3.13.2,<3.14"
+license = "MIT"
+
+[dependency-groups]
+dev = [
+  "homeassistant==2026.2.3",
+  "mypy>=1.17",
+  "pytest>=8.4",
+  "pytest-asyncio>=1.1",
+  "pytest-homeassistant-custom-component>=0.13.316",
+  "ruff>=0.12",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["ASYNC", "B", "E", "F", "I", "RUF", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["custom_components/hehku_energy"]

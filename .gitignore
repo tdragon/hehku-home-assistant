@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+*.py[cod]
+*.egg-info/
+.DS_Store
+# Never commit API captures or renewable credentials.
+credentials.json
+consumption.json
+consumption.csv
+*.har

@@ -1,0 +1,26 @@
+backfill:
+  name: Backfill consumption
+  description: >-
+    Fetch and import a historical local-date interval. If newer statistics already
+    exist, Hehku Energia also rebuilds subsequent cumulative sums so corrections
+    remain valid. The end date is exclusive and defaults to tomorrow.
+  fields:
+    start_date:
+      name: Start date
+      description: First local calendar date to fetch (inclusive).
+      required: true
+      selector:
+        date:
+    end_date:
+      name: End date
+      description: Local calendar date after the final date to fetch (exclusive).
+      required: false
+      selector:
+        date:
+    config_entry_id:
+      name: Config entry ID
+      description: Required only if several Hehku Energia entries are loaded.
+      required: false
+      selector:
+        config_entry:
+          integration: hehku_energy

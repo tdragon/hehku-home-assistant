@@ -1,0 +1,54 @@
+{
+  "title": "Hehku Energia",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Hehku Energia",
+        "description": "Enter your Hehku email address. A sign-in link will be sent to it.",
+        "data": {"email": "Email address"}
+      },
+      "reauth_confirm": {
+        "title": "Reconnect Hehku Energia",
+        "description": "Enter your Hehku email address to receive a new sign-in link.",
+        "data": {"email": "Email address"}
+      },
+      "wait_for_link": {
+        "title": "Open the Hehku email",
+        "description": "Open the sign-in link in the email. This page will continue automatically."
+      },
+      "login_failed": {
+        "title": "Sign-in failed",
+        "description": "The link expired or the request failed. Submit to try again."
+      },
+      "location": {
+        "title": "Choose metering location",
+        "data": {"location_id": "Location"}
+      }
+    },
+    "progress": {"wait_for_link": "Waiting for the Hehku sign-in link to be opened"},
+    "error": {"cannot_connect": "Could not connect to Hehku"},
+    "abort": {
+      "already_configured": "This Hehku location is already configured",
+      "cannot_connect": "Could not retrieve Hehku locations",
+      "login_not_initialized": "The login session was lost; start again",
+      "location_not_found": "The selected location was not returned by Hehku",
+      "no_locations": "No electricity locations were returned",
+      "wrong_account": "The sign-in link belongs to a different account"
+    }
+  },
+  "entity": {
+    "button": {"fetch_recent": {"name": "Fetch recent consumption"}},
+    "sensor": {
+      "latest_hourly_consumption": {"name": "Latest hourly consumption"},
+      "last_import": {"name": "Last consumption import"}
+    }
+  },
+  "exceptions": {"service_error": {"message": "{error}"}},
+  "issues": {},
+  "services": {
+    "backfill": {
+      "name": "Backfill consumption",
+      "description": "Fetch and import a historical local-date interval."
+    }
+  }
+}
