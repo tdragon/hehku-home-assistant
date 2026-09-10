@@ -27,7 +27,12 @@ from homeassistant.util.unit_conversion import EnergyConverter
 
 from .api import HehkuApiError, HehkuClient
 from .const import DOMAIN, MAX_BACKFILL_DAYS
-from .intervals import IntervalAlignmentError, dst_safe_date_chunks, interval_starts
+from .intervals import (
+    IntervalAlignmentError,
+    dst_safe_date_chunks,
+    expected_interval_count,
+    interval_starts,
+)
 from .statistics_core import ExistingStatistic, rebuild_statistics
 
 _LOGGER = logging.getLogger(__name__)
@@ -70,6 +75,7 @@ class HehkuStatisticsImporter:
         self.location_name = location_name
         self.timezone = timezone
         self.statistic_id = statistic_id_for_location(location_id)
+        self.latest_intervals: dict[datetime, float | None] = {}
         self._lock = asyncio.Lock()
 
     async def async_import(self, start_date: date, end_date: date) -> ImportResult:
@@ -85,6 +91,7 @@ class HehkuStatisticsImporter:
                     f"The effective import may span at most {MAX_BACKFILL_DAYS} days"
                 )
             fetched, missing = await self._fetch(start_date, effective_end)
+            self.latest_intervals = fetched
             if not fetched:
                 return ImportResult(0, missing, None, None, datetime.now(UTC))
 
@@ -210,6 +217,16 @@ class HehkuStatisticsImporter:
             item_start = datetime.fromtimestamp(float(item["start"]), tz=UTC)
             rows[item_start] = ExistingStatistic(float(state), float(cumulative_sum))
         return rows
+
+    async def async_day_complete(self, day: date) -> bool:
+        """Return whether every local hour has stored non-null consumption."""
+        zone = ZoneInfo(self.timezone)
+        start = datetime.combine(day, time.min).replace(tzinfo=zone).astimezone(UTC)
+        end = (
+            datetime.combine(day + timedelta(days=1), time.min).replace(tzinfo=zone).astimezone(UTC)
+        )
+        rows = await self._existing_statistics(start, end)
+        return len(rows) == expected_interval_count(day, self.timezone)
 
     async def _latest_statistic_before(self, start: datetime) -> ExistingStatistic | None:
         """Return the newest cumulative row before start, even across missing hours."""

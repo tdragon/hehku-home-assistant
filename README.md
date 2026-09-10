@@ -11,12 +11,15 @@ Unofficial, HACS-compatible Home Assistant integration that imports hourly elect
 
 - Home Assistant UI configuration using Hehku's email magic-link login
 - automatic access-token refresh, including immediate persistence of rotated refresh tokens
-- hourly cloud polling
+- availability-aware collection instead of wasteful hourly polling:
+  - consumption shortly after `00:00 UTC`, with two conditional hourly retries
+  - next-day spot prices at `12:15 UTC`, with two conditional hourly retries
 - a 14-day trailing correction window to pick up delayed and revised readings
 - a **Fetch recent consumption** button
-- a parameterized `hehku_energy.backfill` action for custom historical intervals
-- hourly kWh imported as Home Assistant **external long-term statistics**
-- a latest-hour sensor and last-import diagnostic sensor
+- parameterized `hehku_energy.backfill` and `hehku_energy.backfill_spot_prices` actions
+- hourly kWh, raw EUR/kWh prices, and cumulative estimated EUR supply cost imported as Home Assistant **external long-term statistics**
+- configurable local spot multiplier and VAT-inclusive per-kWh margin; no dependency on Eliq's calculated-cost response
+- sensors for current spot price, today's estimated supply cost, month-to-date estimated supply cost, latest consumption, and last import
 - DST-aware interval reconstruction: spring skips local 03:00 and autumn represents both 03:00 folds; an unexpected API slot count is skipped rather than guessed
 
 ## Requirements
@@ -39,9 +42,14 @@ Manual installation is also possible by copying `custom_components/hehku_energy`
 
 ## Automatic and manual collection
 
-Once configured, the integration polls once an hour. Each poll fetches the previous 14 local calendar days plus the current day. Null values remain missing; they are never collapsed or shifted.
+Once configured, the integration performs two primary daily collections:
 
-Pressing **Fetch recent consumption** triggers that same correction-window poll immediately. Home Assistant records the sensor state's `last_changed` when the fetch completes; the actual measurement time is the latest-hour sensor's `interval_start` attribute and the timestamp stored with the external statistic.
+- consumption at `00:15 UTC`, covering a trailing correction window;
+- today's and tomorrow's market prices at `12:15 UTC`.
+
+At `01:15`/`02:15 UTC`, consumption is retried only while yesterday remains incomplete. At `13:15`/`14:15 UTC`, prices are retried only while tomorrow remains incomplete. A restart also refreshes stale working data. Null values remain missing; they are never collapsed or shifted.
+
+Pressing **Fetch recent consumption** refreshes both recent consumption and locally calculated costs immediately. Home Assistant records the sensor state's `last_changed` when the fetch completes; the actual measurement time is the latest-hour sensor's `interval_start` attribute and the timestamp stored with the external statistic.
 
 ### Custom backfill
 
@@ -69,21 +77,40 @@ The API's documented hourly-request maximum is 93 days; the integration uses chu
 
 If an older interval is added or corrected, all later existing sums are rebuilt through the newest imported date. This matters because Home Assistant's Energy Dashboard expects cumulative `sum` statistics, not isolated hourly deltas.
 
+### Spot-price backfill and local cost model
+
+Open **Settings → Developer tools → Actions**, select **Hehku Energia: Backfill spot prices**, or call:
+
+```yaml
+action: hehku_energy.backfill_spot_prices
+data:
+  start_date: "2026-08-01"
+  end_date: "2026-09-01"
+```
+
+The action upserts raw EUR/kWh market prices, pairs them with existing hourly consumption, rebuilds correction-safe cumulative EUR cost statistics, and immediately refreshes daily and month-to-date estimates. Repeating the same range is safe. Dates use the same inclusive-start/exclusive-end convention as consumption backfill.
+
+Configure the calculation from the integration's **Configure** dialog:
+
+```text
+interval supply cost = consumption kWh × (spot EUR/kWh × multiplier + margin EUR/kWh)
+```
+
+Defaults are a spot multiplier of `1.0` and a VAT-inclusive margin of `0.0035 EUR/kWh`. The multiplication occurs per interval before daily/monthly aggregation. Monthly fees, discounts, Caruna distribution charges, electricity tax, and other invoice charges are intentionally excluded.
+
 ## Home Assistant history and Energy Dashboard
 
-Yes—Home Assistant supports this use case through Recorder's external long-term statistics. The integration creates a statistic like:
+The integration creates statistics like:
 
 ```text
 hehku_energy:<location>_energy_consumption
+hehku_energy:<location>_spot_price
+hehku_energy:<location>_supply_cost
 ```
 
-It stores:
+Consumption stores the hourly kWh `state` and cumulative kWh `sum`. Spot price stores the arithmetic hourly EUR/kWh value. Supply cost stores each hour's estimated EUR `state` and its correction-safe cumulative EUR `sum`; daily and monthly values are aggregations of the interval calculations.
 
-- `state`: that hour's consumption in kWh
-- `sum`: cumulative imported consumption in kWh
-- `start`: timezone-aware UTC start of the interval
-
-The statistic should appear as a grid-consumption source in **Settings → Dashboards → Energy** after the first successful import and Recorder processing. It is not represented by the latest-hour sensor's state; the sensor is informational only.
+The consumption statistic should appear as a grid-consumption source in **Settings → Dashboards → Energy** after the first successful import and Recorder processing. The cumulative supply-cost statistic can be inspected through Home Assistant statistics and used by dashboards that accept external monetary statistics. Informational sensors do not replace the historical statistics.
 
 ## Timestamp and DST safety
 
@@ -103,7 +130,7 @@ The integration:
 
 The private API requests `unit=energy`, but the returned numeric values are **Wh**. This integration divides values by 1,000 before importing kWh.
 
-Recent readings may remain null for hours or days due to upstream meter/provider delay. Hourly polling does not imply near-real-time electricity monitoring.
+Recent readings may remain null for hours or days due to upstream meter/provider delay. Conditional retries do not imply near-real-time electricity monitoring.
 
 ## Security and privacy
 

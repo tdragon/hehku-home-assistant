@@ -24,3 +24,29 @@ backfill:
       selector:
         config_entry:
           integration: hehku_energy
+
+backfill_spot_prices:
+  name: Backfill spot prices
+  description: >-
+    Fetch historical EUR spot prices, update price statistics, and rebuild matching
+    variable supply-cost estimates. The end date is exclusive and defaults to tomorrow.
+  fields:
+    start_date:
+      name: Start date
+      description: First local calendar date to fetch (inclusive).
+      required: true
+      selector:
+        date:
+    end_date:
+      name: End date
+      description: Local calendar date after the final date to fetch (exclusive).
+      required: false
+      selector:
+        date:
+    config_entry_id:
+      name: Config entry ID
+      description: Required only if several Hehku Energia entries are loaded.
+      required: false
+      selector:
+        config_entry:
+          integration: hehku_energy

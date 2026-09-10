@@ -12,7 +12,7 @@ from aiohttp import ClientError, ClientSession
 
 API_BASE = "https://hehku.insights-api.eliq.com/v3"
 CLIENT_ID = 20189927261
-USER_AGENT = "hehku-home-assistant/0.1.1"
+USER_AGENT = "hehku-home-assistant/0.2.0"
 
 T = TypeVar("T")
 
@@ -116,7 +116,7 @@ class HehkuApi:
             "Accept": "application/json",
             "User-Agent": USER_AGENT,
             "X-Xapp": json.dumps(
-                {"platform": "desktop", "isNative": False, "xVersion": "0.1.1"},
+                {"platform": "desktop", "isNative": False, "xVersion": "0.2.0"},
                 separators=(",", ":"),
             ),
         }
@@ -240,6 +240,24 @@ class HehkuApi:
             raise HehkuApiError("Consumption response does not contain an array")
         return payload
 
+    async def get_market_prices(
+        self,
+        location_id: int | str,
+        start: str,
+        end: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        """Fetch timestamped hourly electricity market prices."""
+        payload = await self._request_json(
+            "GET",
+            f"/locations/{location_id}/marketprice/prices",
+            params={"resolution": "hour", "from": start, "to": end},
+            access_token=access_token,
+        )
+        if not isinstance(payload, dict) or not isinstance(payload.get("values"), list):
+            raise HehkuApiError("Market-price response does not contain an array")
+        return payload
+
 
 class HehkuClient:
     """Authenticated client which serializes refresh-token rotation."""
@@ -279,4 +297,14 @@ class HehkuClient:
         """Fetch consumption, refreshing once after an HTTP 401."""
         return await self._authenticated(
             lambda current: self.api.get_consumption(location_id, start, end, current.access_token)
+        )
+
+    async def get_market_prices(
+        self, location_id: int | str, start: str, end: str
+    ) -> dict[str, Any]:
+        """Fetch market prices, refreshing once after an HTTP 401."""
+        return await self._authenticated(
+            lambda current: self.api.get_market_prices(
+                location_id, start, end, current.access_token
+            )
         )

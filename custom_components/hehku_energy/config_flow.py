@@ -11,6 +11,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_EMAIL
+from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -26,9 +27,13 @@ from .const import (
     CONF_DEVICE_UUID,
     CONF_LOCATION_ID,
     CONF_LOCATION_NAME,
+    CONF_MARGIN,
     CONF_REFRESH_TOKEN,
+    CONF_SPOT_MULTIPLIER,
     CONF_TIME_ZONE,
     CONF_USER_ID,
+    DEFAULT_MARGIN,
+    DEFAULT_SPOT_MULTIPLIER,
     DEFAULT_TIME_ZONE,
     DOMAIN,
 )
@@ -42,6 +47,14 @@ class HehkuConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a Hehku Energia config flow."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        """Return the local supply-price options flow."""
+        return HehkuOptionsFlow(config_entry)
 
     def __init__(self) -> None:
         self._api: HehkuApi | None = None
@@ -199,3 +212,31 @@ class HehkuConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_update_reload_and_abort(self._reauth_entry, data_updates=data)
         self._abort_if_unique_id_configured()
         return self.async_create_entry(title=location_name, data=data)
+
+
+class HehkuOptionsFlow(config_entries.OptionsFlow):
+    """Configure local spot-price calculation parameters."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        self._config_entry = config_entry
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Edit spot multiplier and VAT-inclusive margin."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+        options = self._config_entry.options
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_SPOT_MULTIPLIER,
+                        default=options.get(CONF_SPOT_MULTIPLIER, DEFAULT_SPOT_MULTIPLIER),
+                    ): vol.All(vol.Coerce(float), vol.Range(min=0, max=5)),
+                    vol.Required(
+                        CONF_MARGIN,
+                        default=options.get(CONF_MARGIN, DEFAULT_MARGIN),
+                    ): vol.All(vol.Coerce(float), vol.Range(min=-1, max=1)),
+                }
+            ),
+        )

@@ -54,3 +54,26 @@ async def test_non_auth_error_is_not_retried() -> None:
         await client.get_locations()
 
     api.refresh.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_market_prices_use_authenticated_client() -> None:
+    api = AsyncMock(spec=HehkuApi)
+    api.get_market_prices.return_value = {
+        "resolution": "hour",
+        "currency": "EUR",
+        "from": "2026-08-01T00:00:00",
+        "to": "2026-08-02T00:00:00",
+        "values": [],
+    }
+    client = HehkuClient(api, credentials(), lambda _: None)
+
+    result = await client.get_market_prices(42, "2026-08-01T00:00:00", "2026-08-02T00:00:00")
+
+    assert result["currency"] == "EUR"
+    api.get_market_prices.assert_awaited_once_with(
+        42,
+        "2026-08-01T00:00:00",
+        "2026-08-02T00:00:00",
+        "old-access",
+    )

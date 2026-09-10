@@ -36,19 +36,44 @@
       "wrong_account": "The sign-in link belongs to a different account"
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Electricity supply pricing",
+        "description": "Calculate variable supply cost from Eliq spot prices. Monthly fees, Caruna charges, and electricity tax are excluded.",
+        "data": {
+          "spot_multiplier": "Spot-price multiplier",
+          "margin": "VAT-inclusive margin (EUR/kWh)"
+        },
+        "data_description": {
+          "spot_multiplier": "Use 1.0 when Eliq prices already include the required tax adjustment.",
+          "margin": "Fixed contract margin added to every consumed kWh."
+        }
+      }
+    }
+  },
   "entity": {
     "button": {"fetch_recent": {"name": "Fetch recent consumption"}},
     "sensor": {
       "latest_hourly_consumption": {"name": "Latest hourly consumption"},
-      "last_import": {"name": "Last consumption import"}
+      "spot_price": {"name": "Spot price"},
+      "today_supply_cost": {"name": "Today's estimated supply cost"},
+      "month_supply_cost": {"name": "Month-to-date estimated supply cost"},
+      "last_import": {"name": "Last data import"}
     }
   },
-  "exceptions": {"service_error": {"message": "{error}"}},
+  "exceptions": {
+    "service_error": {"message": "{error}"}
+  },
   "issues": {},
   "services": {
     "backfill": {
       "name": "Backfill consumption",
       "description": "Fetch and import a historical local-date interval."
+    },
+    "backfill_spot_prices": {
+      "name": "Backfill spot prices",
+      "description": "Fetch historical EUR spot prices and rebuild matching variable supply-cost estimates."
     }
   }
 }

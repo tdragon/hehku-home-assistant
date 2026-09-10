@@ -21,15 +21,21 @@ from .const import (
     CONF_DEVICE_UUID,
     CONF_LOCATION_ID,
     CONF_LOCATION_NAME,
+    CONF_MARGIN,
     CONF_REFRESH_TOKEN,
+    CONF_SPOT_MULTIPLIER,
     CONF_TIME_ZONE,
     CONF_USER_ID,
+    DEFAULT_MARGIN,
+    DEFAULT_SPOT_MULTIPLIER,
     DOMAIN,
     MAX_BACKFILL_DAYS,
     PLATFORMS,
     SERVICE_BACKFILL,
+    SERVICE_BACKFILL_PRICES,
 )
 from .coordinator import HehkuCoordinator
+from .price_statistics import HehkuPriceImporter
 from .statistics import HehkuStatisticsImporter
 
 DATA_COORDINATORS = "coordinators"
@@ -45,23 +51,24 @@ BACKFILL_SCHEMA = vol.Schema(
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
-    """Register the parameterized historical backfill action."""
+    """Register historical consumption and spot-price backfill actions."""
     hass.data.setdefault(DOMAIN, {DATA_COORDINATORS: {}})
 
-    async def async_handle_backfill(call: ServiceCall) -> None:
+    def coordinator_for_call(call: ServiceCall) -> HehkuCoordinator:
         coordinators: dict[str, HehkuCoordinator] = hass.data[DOMAIN][DATA_COORDINATORS]
         entry_id = call.data.get(ATTR_CONFIG_ENTRY_ID)
         if entry_id is not None:
             coordinator = coordinators.get(entry_id)
             if coordinator is None:
                 raise ServiceValidationError("Unknown or unloaded Hehku config entry")
-        elif len(coordinators) == 1:
-            coordinator = next(iter(coordinators.values()))
-        else:
-            raise ServiceValidationError(
-                "config_entry_id is required when more than one Hehku entry is loaded"
-            )
+            return coordinator
+        if len(coordinators) == 1:
+            return next(iter(coordinators.values()))
+        raise ServiceValidationError(
+            "config_entry_id is required unless exactly one Hehku entry is loaded"
+        )
 
+    def dates_for_call(call: ServiceCall, coordinator: HehkuCoordinator) -> tuple[date, date]:
         start_date: date = call.data[ATTR_START_DATE]
         end_date: date = call.data.get(ATTR_END_DATE) or (
             datetime.now(coordinator.timezone).date() + timedelta(days=1)
@@ -70,12 +77,28 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             raise ServiceValidationError("end_date must be after start_date")
         if (end_date - start_date).days > MAX_BACKFILL_DAYS:
             raise ServiceValidationError(f"A backfill may span at most {MAX_BACKFILL_DAYS} days")
+        return start_date, end_date
+
+    async def async_handle_backfill(call: ServiceCall) -> None:
+        coordinator = coordinator_for_call(call)
+        start_date, end_date = dates_for_call(call, coordinator)
         await coordinator.async_backfill(start_date, end_date)
+
+    async def async_handle_price_backfill(call: ServiceCall) -> None:
+        coordinator = coordinator_for_call(call)
+        start_date, end_date = dates_for_call(call, coordinator)
+        await coordinator.async_backfill_prices(start_date, end_date)
 
     hass.services.async_register(
         DOMAIN,
         SERVICE_BACKFILL,
         async_handle_backfill,
+        schema=BACKFILL_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_BACKFILL_PRICES,
+        async_handle_price_backfill,
         schema=BACKFILL_SCHEMA,
     )
     return True
@@ -111,18 +134,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data[CONF_LOCATION_NAME],
         entry.data[CONF_TIME_ZONE],
     )
-    coordinator = HehkuCoordinator(hass, entry, importer)
+    price_importer = HehkuPriceImporter(
+        hass,
+        client,
+        entry.data[CONF_LOCATION_ID],
+        entry.data[CONF_LOCATION_NAME],
+        entry.data[CONF_TIME_ZONE],
+        float(entry.options.get(CONF_SPOT_MULTIPLIER, DEFAULT_SPOT_MULTIPLIER)),
+        float(entry.options.get(CONF_MARGIN, DEFAULT_MARGIN)),
+    )
+    coordinator = HehkuCoordinator(hass, entry, importer, price_importer)
     entry.runtime_data = coordinator
 
     await coordinator.async_config_entry_first_refresh()
     hass.data[DOMAIN][DATA_COORDINATORS][entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    coordinator.async_start_schedules()
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     return True
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload after local pricing options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a Hehku config entry."""
+    coordinator: HehkuCoordinator = entry.runtime_data
+    coordinator.async_stop_schedules()
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        coordinator.async_start_schedules()
         return False
     hass.data[DOMAIN][DATA_COORDINATORS].pop(entry.entry_id, None)
     return True

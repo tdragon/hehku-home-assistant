@@ -15,12 +15,17 @@ from custom_components.hehku_energy.const import (
     CONF_DEVICE_UUID,
     CONF_LOCATION_ID,
     CONF_LOCATION_NAME,
+    CONF_MARGIN,
     CONF_REFRESH_TOKEN,
+    CONF_SPOT_MULTIPLIER,
     CONF_TIME_ZONE,
     CONF_USER_ID,
     DOMAIN,
     SERVICE_BACKFILL,
+    SERVICE_BACKFILL_PRICES,
 )
+from custom_components.hehku_energy.price_statistics import PriceImportResult
+from custom_components.hehku_energy.pricing_core import CostSummary
 from custom_components.hehku_energy.statistics import ImportResult
 
 
@@ -28,6 +33,24 @@ async def test_registers_backfill_action(hass: HomeAssistant) -> None:
     """The integration registers its parameterized historical action."""
     assert await async_setup(hass, {})
     assert hass.services.has_service(DOMAIN, SERVICE_BACKFILL)
+    assert hass.services.has_service(DOMAIN, SERVICE_BACKFILL_PRICES)
+
+
+async def test_options_flow_saves_local_pricing_parameters(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, title="Apartment", data={})
+    entry.add_to_hass(hass)
+
+    with patch("homeassistant.config_entries.async_process_deps_reqs", AsyncMock()):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        assert result["type"] is FlowResultType.FORM
+
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            {CONF_SPOT_MULTIPLIER: 1.255, CONF_MARGIN: 0.0035},
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {CONF_SPOT_MULTIPLIER: 1.255, CONF_MARGIN: 0.0035}
 
 
 async def test_magic_link_flow_creates_entry(hass: HomeAssistant) -> None:
@@ -89,20 +112,35 @@ async def test_setup_entry_polls_and_persists_rotated_credentials(
         latest_kwh=0.25,
         completed_at=datetime(2026, 9, 9, 21, tzinfo=UTC),
     )
+    price_result = PriceImportResult(
+        imported_prices=24,
+        missing_prices=0,
+        imported_costs=1,
+        missing_costs=0,
+        current_price=0.05,
+        summary=CostSummary(0.1, 0.01, 0.11, 1, 1.0, 0.1, 1.1, 10),
+        completed_at=datetime(2026, 9, 9, 21, tzinfo=UTC),
+    )
 
     with (
         patch(
             "custom_components.hehku_energy.HehkuStatisticsImporter.async_import",
             AsyncMock(return_value=initial_result),
         ) as import_data,
+        patch(
+            "custom_components.hehku_energy.HehkuPriceImporter.async_import",
+            AsyncMock(return_value=price_result),
+        ) as import_prices,
         patch.object(hass.config_entries, "async_forward_entry_setups", AsyncMock()),
     ):
         assert await async_setup(hass, {})
         assert await async_setup_entry(hass, entry)
 
     import_data.assert_awaited_once()
+    import_prices.assert_awaited_once()
     coordinator = entry.runtime_data
-    assert coordinator.data == initial_result
+    assert coordinator.data.consumption == initial_result
+    assert coordinator.data.pricing == price_result
 
     coordinator.importer.client._credentials_updated(
         Credentials("7", "new-access", "new-refresh", "device-uuid")
