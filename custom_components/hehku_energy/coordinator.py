@@ -76,7 +76,7 @@ class HehkuCoordinator(DataUpdateCoordinator[HehkuData]):
             try:
                 pricing = await self.price_importer.async_import(
                     price_start,
-                    today + timedelta(days=2),
+                    today + timedelta(days=1),
                     consumption_overrides=self.importer.latest_intervals,
                 )
             except HehkuAuthError:

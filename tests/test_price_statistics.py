@@ -4,6 +4,11 @@ from datetime import UTC, date, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.components.recorder.core import Recorder
+from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.components.recorder.common import (
+    async_recorder_block_till_done,
+)
 
 from custom_components.hehku_energy.api import HehkuApiError
 from custom_components.hehku_energy.price_statistics import (
@@ -12,6 +17,11 @@ from custom_components.hehku_energy.price_statistics import (
     price_statistic_id_for_location,
 )
 from custom_components.hehku_energy.pricing_core import CostSummary
+
+
+@pytest.fixture
+def mock_recorder_before_hass(recorder_db_url: str) -> None:
+    """Create the recorder database before the Home Assistant fixture."""
 
 
 async def test_fetches_and_maps_hourly_eur_prices() -> None:
@@ -108,3 +118,47 @@ async def test_cost_rebuild_rejects_automatic_extension_beyond_safety_limit() ->
 
     with pytest.raises(HehkuApiError, match="maximum safe rebuild range"):
         await importer._write_costs({start: 0.10})
+
+
+async def test_price_statistics_round_trip_through_recorder(
+    hass: HomeAssistant, recorder_mock: Recorder
+) -> None:
+    assert recorder_mock is not None
+    importer = HehkuPriceImporter(
+        hass,
+        MagicMock(),
+        42,
+        "Apartment",
+        "Europe/Helsinki",
+        1.0,
+        0.0035,
+    )
+    start = datetime(2026, 9, 10, 8, tzinfo=UTC)
+
+    importer._write_prices({start: 0.06467})
+    await async_recorder_block_till_done(hass)
+
+    assert await importer._read_prices(start, start + timedelta(hours=1)) == {
+        start: pytest.approx(0.06467)
+    }
+
+
+async def test_recent_price_cache_is_available_before_recorder_commit() -> None:
+    importer = HehkuPriceImporter(
+        MagicMock(),
+        MagicMock(),
+        42,
+        "Apartment",
+        "Europe/Helsinki",
+        1.0,
+        0.0035,
+    )
+    importer._statistics = AsyncMock(return_value={})
+    start = datetime(2026, 9, 10, 8, tzinfo=UTC)
+
+    with patch("custom_components.hehku_energy.price_statistics.async_add_external_statistics"):
+        importer._write_prices({start: 0.06467})
+
+    assert await importer._read_prices(start, start + timedelta(hours=1)) == {
+        start: pytest.approx(0.06467)
+    }

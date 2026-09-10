@@ -91,6 +91,7 @@ class HehkuPriceImporter:
         self.price_statistic_id = price_statistic_id_for_location(location_id)
         self.cost_statistic_id = cost_statistic_id_for_location(location_id)
         self.consumption_statistic_id = statistic_id_for_location(location_id)
+        self._price_cache: dict[datetime, float] = {}
         self._lock = asyncio.Lock()
 
     async def async_import(
@@ -226,6 +227,11 @@ class HehkuPriceImporter:
         return parsed
 
     def _write_prices(self, prices: dict[datetime, float | None]) -> None:
+        for start, price in prices.items():
+            if price is None:
+                self._price_cache.pop(start, None)
+            else:
+                self._price_cache[start] = price
         rows = [
             cast(
                 StatisticData,
@@ -325,6 +331,13 @@ class HehkuPriceImporter:
                         self._numeric(item_start, "price statistic timestamp"), tz=UTC
                     )
                 ] = self._numeric(value, "price statistic mean")
+        prices.update(
+            {
+                interval_start: price
+                for interval_start, price in self._price_cache.items()
+                if start <= interval_start < end
+            }
+        )
         return prices
 
     async def _read_state_series(

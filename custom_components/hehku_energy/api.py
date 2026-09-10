@@ -12,7 +12,7 @@ from aiohttp import ClientError, ClientSession
 
 API_BASE = "https://hehku.insights-api.eliq.com/v3"
 CLIENT_ID = 20189927261
-USER_AGENT = "hehku-home-assistant/0.2.0"
+USER_AGENT = "hehku-home-assistant/0.2.1"
 
 T = TypeVar("T")
 
@@ -116,7 +116,7 @@ class HehkuApi:
             "Accept": "application/json",
             "User-Agent": USER_AGENT,
             "X-Xapp": json.dumps(
-                {"platform": "desktop", "isNative": False, "xVersion": "0.2.0"},
+                {"platform": "desktop", "isNative": False, "xVersion": "0.2.1"},
                 separators=(",", ":"),
             ),
         }
